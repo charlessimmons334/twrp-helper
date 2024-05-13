@@ -3,17 +3,6 @@
 # Magisk Module Installer Script
 #
 ##########################################################################################
-##########################################################################################
-#
-# Instructions:
-#
-# 1. Place your files into system folder (delete the placeholder file)
-# 2. Fill in your module's info into module.prop
-# 3. Configure and implement callbacks in this file
-# 4. If you need boot scripts, add them into common/post-fs-data.sh or common/service.sh
-# 5. Add your additional or modified system properties into common/system.prop
-#
-##########################################################################################
 
 ##########################################################################################
 # Config Flags
@@ -22,7 +11,7 @@
 # Set to true if you do *NOT* want Magisk to mount
 # any files for you. Most modules would NOT want
 # to set this flag to true
-SKIPMOUNT=true
+SKIPMOUNT=false
 
 # Set to true if you need to load system.prop
 PROPFILE=false
@@ -38,88 +27,18 @@ LATESTARTSERVICE=true
 ##########################################################################################
 
 # List all directories you want to directly replace in the system
-# Check the documentations for more info why you would need this
-
-# Construct your list in the following format
-# This is an example
-REPLACE_EXAMPLE="
-/system/app/Youtube
-/system/priv-app/SystemUI
-/system/priv-app/Settings
-/system/framework
-"
-
-# Construct your own list here
-REPLACE="
-"
+REPLACE=""
 
 ##########################################################################################
-#
 # Function Callbacks
-#
-# The following functions will be called by the installation framework.
-# You do not have the ability to modify update-binary, the only way you can customize
-# installation is through implementing these functions.
-#
-# When running your callbacks, the installation framework will make sure the Magisk
-# internal busybox path is *PREPENDED* to PATH, so all common commands shall exist.
-# Also, it will make sure /data, /system, and /vendor is properly mounted.
-#
 ##########################################################################################
-##########################################################################################
-#
+
 # The installation framework will export some variables and functions.
 # You should use these variables and functions for installation.
-#
-# ! DO NOT use any Magisk internal paths as those are NOT public API.
-# ! DO NOT use other functions in util_functions.sh as they are NOT public API.
-# ! Non public APIs are not guranteed to maintain compatibility between releases.
-#
-# Available variables:
-#
-# MAGISK_VER (string): the version string of current installed Magisk
-# MAGISK_VER_CODE (int): the version code of current installed Magisk
-# BOOTMODE (bool): true if the module is currently installing in Magisk Manager
-# MODPATH (path): the path where your module files should be installed
-# TMPDIR (path): a place where you can temporarily store files
-# ZIPFILE (path): your module's installation zip
-# ARCH (string): the architecture of the device. Value is either arm, arm64, x86, or x64
-# IS64BIT (bool): true if $ARCH is either arm64 or x64
-# API (int): the API level (Android version) of the device
-#
-# Availible functions:
-#
-# ui_print <msg>
-#     print <msg> to console
-#     Avoid using 'echo' as it will not display in custom recovery's console
-#
-# abort <msg>
-#     print error message <msg> to console and terminate installation
-#     Avoid using 'exit' as it will skip the termination cleanup steps
-#
-# set_perm <target> <owner> <group> <permission> [context]
-#     if [context] is empty, it will default to "u:object_r:system_file:s0"
-#     this function is a shorthand for the following commands
-#       chown owner.group target
-#       chmod permission target
-#       chcon context target
-#
-# set_perm_recursive <directory> <owner> <group> <dirpermission> <filepermission> [context]
-#     if [context] is empty, it will default to "u:object_r:system_file:s0"
-#     for all files in <directory>, it will call:
-#       set_perm file owner group filepermission context
-#     for all directories in <directory> (including itself), it will call:
-#       set_perm dir owner group dirpermission context
-#
-##########################################################################################
-##########################################################################################
-# If you need boot scripts, DO NOT use general boot scripts (post-fs-data.d/service.d)
-# ONLY use module scripts as it respects the module status (remove/disable) and is
-# guaranteed to maintain the same behavior in future Magisk releases.
-# Enable boot scripts by setting the flags in the config section above.
-##########################################################################################
 
-# Set what you want to display when installing your module
+##########################################################################################
+# Installation messages
+##########################################################################################
 
 print_modname() {
   ui_print "*******************************"
@@ -127,61 +46,58 @@ print_modname() {
   ui_print "*******************************"
 }
 
-# Copy/extract your module files into $MODPATH in on_install.
-
 on_install() {
-  # The following is the default implementation: extract $ZIPFILE/system to $MODPATH
-  # Extend/change the logic to whatever you want
   ui_print "- Extracting module files"
   unzip -o "$ZIPFILE" 'system/*' -d $MODPATH >&2
+
+  # Detect active boot slot for A/B devices
+  if [ -n "$(getprop ro.boot.slot_suffix)" ]; then
+    active_slot=$(getprop ro.boot.slot_suffix)
+  else
+    active_slot="_a"  # Default to slot A if no suffix found
+  fi
+
+  ui_print "Active slot: $active_slot"
+
+  # Ensure the script handles A/B partitioning
+  BOOT_PARTITION="/dev/block/bootdevice/by-name/boot$active_slot"
+
+  if [ ! -f "$BOOT_PARTITION" ]; then
+    abort "Boot partition for active slot not found!"
+  fi
 
   if [ ${MAGISK_VER%%.*} -lt 19 ]; then
     abort 'This module requires Magisk v19 or later.'
   fi
 }
 
-# Only some special files require specific permissions
-# This function will be called after on_install is done
-# The default permissions should be good enough for most cases
-
 set_permissions() {
   post_installation
 
   # The following is the default rule, DO NOT remove
   set_perm_recursive $MODPATH 0 0 0755 0644
-
-  # Here are some examples:
-  # set_perm_recursive  $MODPATH/system/lib       0     0       0755      0644
-  # set_perm  $MODPATH/system/bin/app_process32   0     2000    0755      u:object_r:zygote_exec:s0
-  # set_perm  $MODPATH/system/bin/dex2oat         0     2000    0755      u:object_r:dex2oat_exec:s0
-  # set_perm  $MODPATH/system/lib/libart.so       0     0       0644
 }
 
-# You can add more functions to assist your custom script code
 post_installation() {
   ui_print "- Running post-installation"
-  ui_print ""
-
+  
+  # Handle dynamic patching based on active slot
   export BOOTMODE
-  ( cd $MODPATH; ln service.sh uninstall.sh )
-  /system/bin/sh $MODPATH/service.sh 2>&1
+  ( cd $MODPATH; ln -s service.sh uninstall.sh )
+  /system/bin/sh $MODPATH/service.sh --slot $active_slot 2>&1
   status=$?
 
   # Errors < 128 from service.sh are fatal.
-  #
   if [ $status -gt 0 ] && [ $status -lt 128 ]; then
     abort "Fatal error $status. Installation aborted."
   fi
 
-  ui_print ""
   ui_print "Do not be alarmed if patching fails at this stage. This simply"
   ui_print "means that you do not currently have a patchable recovery image."
   ui_print "Perhaps your image is already patched and you are merely upgrading"
   ui_print "this module."
-  ui_print ""
   ui_print "The module is correctly installed and will check your recovery"
   ui_print "partition every time the device boots. Whenever pristine TWRP is"
   ui_print "found, such as would be the case following a TWRP upgrade, for"
   ui_print "example, it will be dynamically patched."
-  ui_print ""
 }
