@@ -25,6 +25,9 @@ if [ ! -e "$BOOT_PARTITION" ]; then
   exit 1
 fi
 
+# Set system property dynamically using resetprop
+resetprop ro.boot.slot_suffix $active_slot
+
 # Additional actions can be performed here based on the detected active slot
 
 # This script will be executed in post-fs-data mode
