@@ -8,36 +8,19 @@
 # Config Flags
 ##########################################################################################
 
-# Set to true if you do *NOT* want Magisk to mount
-# any files for you. Most modules would NOT want
-# to set this flag to true
 SKIPMOUNT=false
-
-# Set to true if you need to load system.prop
 PROPFILE=false
-
-# Set to true if you need post-fs-data script
 POSTFSDATA=false
-
-# Set to true if you need late_start service script
 LATESTARTSERVICE=true
 
 ##########################################################################################
 # Replace list
 ##########################################################################################
 
-# List all directories you want to directly replace in the system
 REPLACE=""
 
 ##########################################################################################
 # Function Callbacks
-##########################################################################################
-
-# The installation framework will export some variables and functions.
-# You should use these variables and functions for installation.
-
-##########################################################################################
-# Installation messages
 ##########################################################################################
 
 print_modname() {
@@ -51,19 +34,20 @@ on_install() {
   unzip -o "$ZIPFILE" 'system/*' -d $MODPATH >&2
 
   # Detect active boot slot for A/B devices
-  if [ -n "$(getprop ro.boot.slot_suffix)" ]; then
-    active_slot=$(getprop ro.boot.slot_suffix)
-  else
+  active_slot=$(getprop ro.boot.slot_suffix)
+  if [ -z "$active_slot" ]; then
+    ui_print "No active slot found, assuming non-A/B device."
     active_slot="_a"  # Default to slot A if no suffix found
   fi
 
   ui_print "Active slot: $active_slot"
 
-  # Ensure the script handles A/B partitioning
+  # Construct the boot partition path for the active slot
   BOOT_PARTITION="/dev/block/bootdevice/by-name/boot$active_slot"
+  ui_print "Boot partition path: $BOOT_PARTITION"
 
-  if [ ! -f "$BOOT_PARTITION" ]; then
-    abort "Boot partition for active slot not found!"
+  if [ ! -e "$BOOT_PARTITION" ]; then
+    abort "Boot partition for active slot not found!!"
   fi
 
   if [ ${MAGISK_VER%%.*} -lt 19 ]; then
