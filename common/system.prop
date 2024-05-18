@@ -1,3 +1,14 @@
 # This file will be read by resetprop
 # Example: Change dpi
 # ro.sf.lcd_density=320
+
+# Example properties for A/B devices
+# Adjust these based on your specific needs
+
+# Property for the active slot (A/B)
+# You can dynamically set this using a script if needed
+# ro.boot.slot_suffix should be detected in a script and applied here if needed
+
+# Example:
+# ro.boot.slot_suffix=_a
+# ro.boot.slot_suffix=_b
