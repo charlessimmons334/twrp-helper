@@ -1,7 +1,7 @@
 id=twrp-helper
 name=TWRP Helper
-version=v1.0
-versionCode=10
-author=ianmacd
+version=v2.0
+versionCode=11
+author=Charles
 description=This module provides dynamic, in-situ patching of the device's TWRP recovery image to include Internal Storage in future Data back-ups.
 
